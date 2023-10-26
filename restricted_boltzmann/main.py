@@ -1,3 +1,5 @@
+from typing import List
+
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from IPython.display import clear_output
@@ -13,31 +15,40 @@ class rbm:
         self.hiddenunits = None
         self.visibleunits = None
 
-    def _h0(self, v0):
+    def _h0(self, v0: List[List]):
         return tf.nn.sigmoid(tf.matmul(v0, self.W) + self.hb)
 
-    def h0(self, v0):
+    def h0(self, v0: List[List]):
         return tf.nn.relu(tf.sign(self._h0(v0) - tf.random.uniform(tf.shape(self._h0(v0)))))
 
-    def _v1(self, v0):
+    def _v1(self, v0: List[List]):
         return tf.nn.sigmoid(tf.matmul(self.h0(v0), tf.transpose(self.W)) + self.vb)
 
-    def v1(self, v0):
+    def v1(self, v0: List[List]):
         return tf.nn.relu(tf.sign(self._v1(v0) - tf.random.uniform(tf.shape(self._v1(v0)))))
 
-    def _h1(self, v0):
+    def _h1(self, v0: List[List]):
         return tf.sigmoid(tf.matmul(self.v1(v0), self.W) + self.hb)
 
-    def h1(self, v0):
+    def h1(self, v0: List[List]):
         return tf.nn.relu(tf.sign(self._h1(v0) - tf.random.uniform(tf.shape(self._h1(v0)))))
 
-    def hh0(self, v0):
+    def hh0(self, v0: List[List]):
         return tf.nn.sigmoid(tf.matmul(v0, self.W) + self.hb)
 
-    def vv1(self, v0):
+    def vv1(self, v0: List[List]):
         return tf.nn.sigmoid(tf.matmul(self.hh0(v0), tf.transpose(self.W)) + self.vb)
 
-    def train(self, v0, hiddenunits, visibleunits, alpha=1.0, epochs=25, batchsize=100, plot=True):
+    def train(
+        self,
+        v0: List[List],
+        hiddenunits: int,
+        visibleunits: int,
+        alpha: float = 1.0,
+        epochs: int = 25,
+        batchsize: int = 100,
+        plot: bool = True,
+    ):
         self.hiddenunits = hiddenunits
         self.visibleunits = visibleunits
         self.vb = tf.constant(0.1, shape=[self.visibleunits])
