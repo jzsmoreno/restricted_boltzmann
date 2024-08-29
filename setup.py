@@ -9,9 +9,16 @@ with open("requirements.txt", "r") as f:
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+about = {}
+ROOT_DIR = Path(__file__).resolve().parent
+PACKAGE_DIR = ROOT_DIR / "restricted_boltzmann"
+with open(PACKAGE_DIR / "VERSION") as f:
+    _version = f.read().strip()
+    about["__version__"] = _version
+
 setuptools.setup(
     name="restricted_boltzmann",
-    version="0.0.4",
+    version=about["__version__"],
     author="J. A. Moreno-Guerra",
     author_email="jzs.gm27@gmail.com",
     description="Testing installation of Package",
