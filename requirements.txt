@@ -5,5 +5,5 @@ pydocstyle==6.3.0
 mypy-extensions==1.0.0
 types-openpyxl==3.1.0.15
 isort==5.12.0
-matplotlib
-tensorflow
+tensorflow>=1.15.5,<=2.10.0
+matplotlib>=3.0.0,<=3.5.0

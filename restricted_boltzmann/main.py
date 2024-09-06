@@ -5,7 +5,7 @@ import tensorflow as tf
 from IPython.display import clear_output
 
 
-class rbm:
+class RestrictedBoltzmann:
     """A class that implements a Restricted Boltzmann Machine"""
 
     def __init__(self):
