@@ -1,8 +1,8 @@
-from typing import List
-
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
 from IPython.display import clear_output
+from typing import List, Union
 
 
 class RestrictedBoltzmann:
@@ -12,107 +12,121 @@ class RestrictedBoltzmann:
         self.vb = None
         self.hb = None
         self.W = None
-        self.hiddenunits = None
-        self.visibleunits = None
+        self.hidden_units = None
+        self.visible_units = None
 
-    def _h0(self, v0: List[List]):
-        return tf.nn.sigmoid(tf.matmul(v0, self.W) + self.hb)
+    def _sigmoid(self, x):
+        return tf.nn.sigmoid(x)
 
-    def h0(self, v0: List[List]):
-        return tf.nn.relu(tf.sign(self._h0(v0) - tf.random.uniform(tf.shape(self._h0(v0)))))
+    def _sample_h_given_v(self, v):
+        probabilities = self._sigmoid(tf.matmul(v, self.W) + self.hb)
+        return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
-    def _v1(self, v0: List[List]):
-        return tf.nn.sigmoid(tf.matmul(self.h0(v0), tf.transpose(self.W)) + self.vb)
+    def _sample_v_given_h(self, h):
+        probabilities = self._sigmoid(tf.matmul(h, tf.transpose(self.W)) + self.vb)
+        return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
-    def v1(self, v0: List[List]):
-        return tf.nn.relu(tf.sign(self._v1(v0) - tf.random.uniform(tf.shape(self._v1(v0)))))
+    def _compute_free_energy(self, v):
+        vb_term = tf.reduce_sum(v * self.vb, axis=1)
+        wx_b_term = tf.matmul(v, self.W) + self.hb
+        hidden_term = tf.reduce_sum(tf.math.log(1 + tf.exp(wx_b_term)), axis=1)
+        return -vb_term - hidden_term
 
-    def _h1(self, v0: List[List]):
-        return tf.sigmoid(tf.matmul(self.v1(v0), self.W) + self.hb)
+    def _contrastive_divergence(self, v0):
+        h0 = self._sample_h_given_v(v0)
+        vk = v0  # Start with the original data
+        hk = None
+        for _ in range(1):  # Typically k=1 is used
+            hk = self._sample_h_given_v(vk)
+            vk = self._sample_v_given_h(hk)
 
-    def h1(self, v0: List[List]):
-        return tf.nn.relu(tf.sign(self._h1(v0) - tf.random.uniform(tf.shape(self._h1(v0)))))
-
-    def hh0(self, v0: List[List]):
-        return tf.nn.sigmoid(tf.matmul(v0, self.W) + self.hb)
-
-    def vv1(self, v0: List[List]):
-        return tf.nn.sigmoid(tf.matmul(self.hh0(v0), tf.transpose(self.W)) + self.vb)
+        w_positive_grad = tf.matmul(tf.transpose(v0), h0) / tf.cast(tf.shape(v0)[0], tf.float32)
+        w_negative_grad = tf.matmul(tf.transpose(vk), hk) / tf.cast(tf.shape(vk)[0], tf.float32)
+        return (
+            w_positive_grad - w_negative_grad,
+            tf.reduce_mean(v0 - vk, axis=0),
+            tf.reduce_mean(h0 - hk, axis=0),
+        )
 
     def train(
         self,
-        v0: List[List],
-        hiddenunits: int,
-        visibleunits: int,
+        data: Union[List[List[float]], tf.Tensor],
+        hidden_units: int,
+        visible_units: int,
         alpha: float = 1.0,
         epochs: int = 25,
-        batchsize: int = 100,
+        batch_size: int = 100,
         plot: bool = True,
+        verbose: bool = False,
+        test_size: float = 0.2,
     ):
-        self.hiddenunits = hiddenunits
-        self.visibleunits = visibleunits
-        self.vb = tf.constant(0.1, shape=[self.visibleunits])
-        self.hb = tf.constant(0.1, shape=[self.hiddenunits])
+        if not isinstance(data, tf.Tensor):
+            data = tf.convert_to_tensor(data, dtype=tf.float32)
+
+        # Split the dataset into train and test sets
+        train_data, test_data = train_test_split(data.numpy(), test_size=test_size, random_state=42)
+        train_data = tf.convert_to_tensor(train_data, dtype=tf.float32)
+        test_data = tf.convert_to_tensor(test_data, dtype=tf.float32)
+
+        self.hidden_units = hidden_units
+        self.visible_units = visible_units
+
+        # Initialize weights and biases
         self.W = tf.Variable(
-            tf.random.truncated_normal([self.visibleunits, self.hiddenunits], stddev=0.1)
+            tf.random.truncated_normal([self.visible_units, self.hidden_units], stddev=0.1)
         )
+        self.vb = tf.Variable(tf.zeros([self.visible_units]))
+        self.hb = tf.Variable(tf.zeros([self.hidden_units]))
 
-        cur_w = tf.Variable(tf.zeros([self.visibleunits, self.hiddenunits], tf.float32))
-        cur_vb = tf.Variable(tf.zeros([self.visibleunits], tf.float32))
-        cur_hb = tf.Variable(tf.zeros([self.hiddenunits], tf.float32))
-        prv_w = tf.Variable(tf.zeros([self.visibleunits, self.hiddenunits], tf.float32))
-        prv_vb = tf.Variable(tf.zeros([self.visibleunits], tf.float32))
-        prv_hb = tf.Variable(tf.zeros([self.hiddenunits], tf.float32))
+        train_errors = []
+        test_errors = []
 
-        def w_pos_grad(v0):
-            return tf.matmul(tf.transpose(v0), self.h0(v0))
-
-        def w_neg_grad(v0):
-            return tf.matmul(tf.transpose(self.v1(v0)), self.h1(v0))
-
-        def cd(v0):
-            return (w_pos_grad(v0) - w_neg_grad(v0)) / tf.cast(tf.shape(v0)[0], "float32")
-
-        def update_w(v0):
-            return self.W + alpha * cd(v0)
-
-        def update_vb(v0):
-            return self.vb + alpha * tf.reduce_mean(v0 - self.v1(v0), 0)
-
-        def update_hb(v0):
-            return self.hb + alpha * tf.reduce_mean(self.h0(v0) - self.h1(v0), 0)
-
-        def err(v0):
-            return v0 - self.v1(v0)
-
-        def err_sum(v0):
-            return tf.reduce_mean(err(v0) * err(v0))
-
-        errors = []
-        for i in range(epochs):
+        for epoch in range(epochs):
             for start, end in zip(
-                range(0, len(v0), batchsize), range(batchsize, len(v0), batchsize)
+                range(0, len(train_data), batch_size),
+                range(batch_size, len(train_data) + 1, batch_size),
             ):
-                batch = v0[start:end]
-                batch = tf.cast(batch, "float32")
-                cur_w = update_w(batch)
-                cur_vb = update_vb(batch)
-                cur_hb = update_hb(batch)
-                prv_w = cur_w
-                prv_vb = cur_vb
-                prv_hb = cur_hb
-                self.W = prv_w
-                self.vb = prv_vb
-                self.hb = prv_hb
+                batch = train_data[start:end]
+                w_grad, vb_grad, hb_grad = self._contrastive_divergence(batch)
 
-            errors.append(err_sum(batch))
+                # Update weights and biases
+                self.W.assign_add(alpha * w_grad)
+                self.vb.assign_add(alpha * vb_grad)
+                self.hb.assign_add(alpha * hb_grad)
 
-            if plot:
+            # Compute reconstruction error for training data
+            v_reconstructed_train = self._sample_v_given_h(self._sample_h_given_v(train_data))
+            train_error = tf.reduce_mean(tf.square(train_data - v_reconstructed_train)).numpy()
+            train_errors.append(train_error)
+
+            # Compute reconstruction error for test data
+            v_reconstructed_test = self._sample_v_given_h(self._sample_h_given_v(test_data))
+            test_error = tf.reduce_mean(tf.square(test_data - v_reconstructed_test)).numpy()
+            test_errors.append(test_error)
+
+            if verbose:
+                print(
+                    f"Epoch {epoch + 1}/{epochs} - Train Loss: {train_error:.4f}, Test Loss: {test_error:.4f}"
+                )
+
+            if plot and (epoch % 5 == 0 or epoch == epochs - 1):
                 clear_output(wait=True)
-                plt.plot(errors)
+                plt.plot(train_errors, label="Train Reconstruction Error", color="blue")
+                plt.plot(test_errors, label="Test Reconstruction Error", color="red")
                 plt.ylabel("Error")
                 plt.xlabel("Epoch")
+                plt.legend()
                 plt.show()
 
-    def predict(self, v0):
-        return self.vv1(v0).numpy()
+    def predict(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+        if not isinstance(data, tf.Tensor):
+            data = tf.convert_to_tensor(data, dtype=tf.float32)
+        return self._sample_v_given_h(self._sample_h_given_v(data)).numpy()
+
+    def predict_proba(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+        if not isinstance(data, tf.Tensor):
+            data = tf.convert_to_tensor(data, dtype=tf.float32)
+        return self._sigmoid(
+            tf.matmul(self._sigmoid(tf.matmul(data, self.W) + self.hb), tf.transpose(self.W))
+            + self.vb
+        ).numpy()
