@@ -1,8 +1,10 @@
+from typing import List, Union
+
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
 from IPython.display import clear_output
-from typing import List, Union
+from sklearn.model_selection import train_test_split
+import os
 
 
 class RestrictedBoltzmann:
@@ -117,6 +119,27 @@ class RestrictedBoltzmann:
                 plt.xlabel("Epoch")
                 plt.legend()
                 plt.show()
+
+    def save_model(self, checkpoint_dir: str):
+        """Save the model's weights and biases to a checkpoint directory."""
+        checkpoint = tf.train.Checkpoint(W=self.W, vb=self.vb, hb=self.hb)
+        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        checkpoint.save(file_prefix=checkpoint_prefix)
+
+    def load_model(self, checkpoint_dir: str, hidden_units: int, visible_units: int):
+        """Load the model's weights and biases from a checkpoint directory."""
+        self.hidden_units = hidden_units
+        self.visible_units = visible_units
+        checkpoint = tf.train.Checkpoint(
+            W=tf.Variable(tf.zeros([self.visible_units, self.hidden_units])),
+            vb=tf.Variable(tf.zeros([self.visible_units])),
+            hb=tf.Variable(tf.zeros([self.hidden_units])),
+        )
+        status = checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
+        status.assert_consumed()
+        self.W = checkpoint.W
+        self.vb = checkpoint.vb
+        self.hb = checkpoint.hb
 
     def predict(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
         if not isinstance(data, tf.Tensor):
