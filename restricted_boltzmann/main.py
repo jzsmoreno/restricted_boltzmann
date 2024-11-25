@@ -1,10 +1,10 @@
+import os
 from typing import List, Union
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from IPython.display import clear_output
 from sklearn.model_selection import train_test_split
-import os
 
 
 class RestrictedBoltzmann:
@@ -61,6 +61,8 @@ class RestrictedBoltzmann:
         plot: bool = True,
         verbose: bool = False,
         test_size: float = 0.2,
+        early_stopping_patience: int = 5,
+        decay_rate: float = 0.95,  # Exponential decay rate
     ):
         if not isinstance(data, tf.Tensor):
             data = tf.convert_to_tensor(data, dtype=tf.float32)
@@ -83,15 +85,22 @@ class RestrictedBoltzmann:
         train_errors = []
         test_errors = []
 
+        best_test_error = float("inf")
+        patience_counter = 0
+
         for epoch in range(epochs):
+            # Shuffle the training data
+            shuffled_indices = tf.random.shuffle(tf.range(tf.shape(train_data)[0]))
+            train_data_shuffled = tf.gather(train_data, shuffled_indices)
+
             for start, end in zip(
                 range(0, len(train_data), batch_size),
                 range(batch_size, len(train_data) + 1, batch_size),
             ):
-                batch = train_data[start:end]
+                batch = train_data_shuffled[start:end]
                 w_grad, vb_grad, hb_grad = self._contrastive_divergence(batch)
 
-                # Update weights and biases
+                # Update weights and biases with the current learning rate
                 self.W.assign_add(alpha * w_grad)
                 self.vb.assign_add(alpha * vb_grad)
                 self.hb.assign_add(alpha * hb_grad)
@@ -119,6 +128,19 @@ class RestrictedBoltzmann:
                 plt.xlabel("Epoch")
                 plt.legend()
                 plt.show()
+
+            # Early stopping logic
+            if test_error < best_test_error:
+                best_test_error = test_error
+                patience_counter = 0
+                # Decay the learning rate for the next epoch
+                alpha *= decay_rate
+            else:
+                patience_counter += 1
+
+            if patience_counter >= early_stopping_patience:
+                print(f"Early stopping at epoch {epoch + 1}")
+                break
 
     def save_model(self, checkpoint_dir: str):
         """Save the model's weights and biases to a checkpoint directory."""
