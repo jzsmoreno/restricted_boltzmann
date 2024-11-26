@@ -29,6 +29,8 @@ class RestrictedBoltzmann:
         return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
     def _compute_free_energy(self, v):
+        if not isinstance(v, tf.Tensor):
+            v = tf.convert_to_tensor(v, dtype=tf.float32)
         vb_term = tf.reduce_sum(v * self.vb, axis=1)
         wx_b_term = tf.matmul(v, self.W) + self.hb
         hidden_term = tf.reduce_sum(tf.math.log(1 + tf.exp(wx_b_term)), axis=1)
