@@ -52,6 +52,12 @@ class RestrictedBoltzmann:
             tf.reduce_mean(h0 - hk, axis=0),
         )
 
+    def _compute_reconstruction_accuracy(self, original_data, reconstructed_data):
+        # Assuming binary data
+        return tf.reduce_mean(
+            tf.cast(tf.equal(original_data, reconstructed_data), tf.float32)
+        ).numpy()
+
     def train(
         self,
         data: Union[List[List[float]], tf.Tensor],
@@ -86,6 +92,8 @@ class RestrictedBoltzmann:
 
         train_errors = []
         test_errors = []
+        train_accuracies = []
+        test_accuracies = []
 
         best_test_error = float("inf")
         patience_counter = 0
@@ -111,15 +119,21 @@ class RestrictedBoltzmann:
             v_reconstructed_train = self._sample_v_given_h(self._sample_h_given_v(train_data))
             train_error = tf.reduce_mean(tf.square(train_data - v_reconstructed_train)).numpy()
             train_errors.append(train_error)
+            train_accuracy = self._compute_reconstruction_accuracy(
+                train_data, v_reconstructed_train
+            )
+            train_accuracies.append(train_accuracy)
 
             # Compute reconstruction error for test data
             v_reconstructed_test = self._sample_v_given_h(self._sample_h_given_v(test_data))
             test_error = tf.reduce_mean(tf.square(test_data - v_reconstructed_test)).numpy()
             test_errors.append(test_error)
+            test_accuracy = self._compute_reconstruction_accuracy(test_data, v_reconstructed_test)
+            test_accuracies.append(test_accuracy)
 
             if verbose:
                 print(
-                    f"Epoch {epoch + 1}/{epochs} - Train Loss: {train_error:.4f}, Test Loss: {test_error:.4f}"
+                    f"Epoch {epoch + 1}/{epochs} - Train Loss: {train_error:.4f}, Train Accuracy: {train_accuracy:.4f}, Test Loss: {test_error:.4f}, Test Accuracy: {test_accuracy:.4f}"
                 )
 
             if plot and (epoch % 5 == 0 or epoch == epochs - 1):
