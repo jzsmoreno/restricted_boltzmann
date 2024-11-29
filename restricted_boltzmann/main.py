@@ -2,6 +2,7 @@ import os
 from typing import List, Union
 
 import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
 from IPython.display import clear_output
 from sklearn.model_selection import train_test_split
@@ -72,11 +73,13 @@ class RestrictedBoltzmann:
         early_stopping_patience: int = 5,
         decay_rate: float = 0.95,  # Exponential decay rate
     ):
-        if not isinstance(data, tf.Tensor):
-            data = tf.convert_to_tensor(data, dtype=tf.float32)
+        if isinstance(data, tf.Tensor):
+            data = data.numpy()
+        elif not isinstance(data, np.ndarray):
+            data = np.array(data)
 
         # Split the dataset into train and test sets
-        train_data, test_data = train_test_split(data.numpy(), test_size=test_size, random_state=42)
+        train_data, test_data = train_test_split(data, test_size=test_size, random_state=42)
         train_data = tf.convert_to_tensor(train_data, dtype=tf.float32)
         test_data = tf.convert_to_tensor(test_data, dtype=tf.float32)
 
