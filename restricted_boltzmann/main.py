@@ -78,10 +78,17 @@ class RestrictedBoltzmann:
         elif not isinstance(data, np.ndarray):
             data = np.array(data)
 
+        data = data.astype(np.float32)
+
         # Split the dataset into train and test sets
         train_data, test_data = train_test_split(data, test_size=test_size, random_state=42)
-        train_data = tf.convert_to_tensor(train_data, dtype=tf.float32)
-        test_data = tf.convert_to_tensor(test_data, dtype=tf.float32)
+        train_dataset = (
+            tf.data.Dataset.from_tensor_slices(train_data)
+            .shuffle(buffer_size=len(train_data))
+            .batch(batch_size)
+            .prefetch(buffer_size=tf.data.AUTOTUNE)
+        )
+        test_dataset = tf.data.Dataset.from_tensor_slices(test_data).batch(batch_size)
 
         self.hidden_units = hidden_units
         self.visible_units = visible_units
@@ -102,15 +109,7 @@ class RestrictedBoltzmann:
         patience_counter = 0
 
         for epoch in range(epochs):
-            # Shuffle the training data
-            shuffled_indices = tf.random.shuffle(tf.range(tf.shape(train_data)[0]))
-            train_data_shuffled = tf.gather(train_data, shuffled_indices)
-
-            for start, end in zip(
-                range(0, len(train_data), batch_size),
-                range(batch_size, len(train_data) + 1, batch_size),
-            ):
-                batch = train_data_shuffled[start:end]
+            for batch in train_dataset:
                 w_grad, vb_grad, hb_grad = self._contrastive_divergence(batch)
 
                 # Update weights and biases with the current learning rate
@@ -119,19 +118,37 @@ class RestrictedBoltzmann:
                 self.hb.assign_add(alpha * hb_grad)
 
             # Compute reconstruction error for training data
-            v_reconstructed_train = self._sample_v_given_h(self._sample_h_given_v(train_data))
-            train_error = tf.reduce_mean(tf.square(train_data - v_reconstructed_train)).numpy()
+            train_error = 0.0
+            train_accuracy = 0.0
+            num_batches_train = 0
+
+            for batch in train_dataset:
+                v_reconstructed_batch = self._sample_v_given_h(self._sample_h_given_v(batch))
+                train_error += tf.reduce_mean(tf.square(batch - v_reconstructed_batch)).numpy()
+                train_accuracy += self._compute_reconstruction_accuracy(
+                    batch, v_reconstructed_batch
+                )
+                num_batches_train += 1
+
+            train_error /= num_batches_train
+            train_accuracy /= num_batches_train
             train_errors.append(train_error)
-            train_accuracy = self._compute_reconstruction_accuracy(
-                train_data, v_reconstructed_train
-            )
             train_accuracies.append(train_accuracy)
 
             # Compute reconstruction error for test data
-            v_reconstructed_test = self._sample_v_given_h(self._sample_h_given_v(test_data))
-            test_error = tf.reduce_mean(tf.square(test_data - v_reconstructed_test)).numpy()
+            test_error = 0.0
+            test_accuracy = 0.0
+            num_batches_test = 0
+
+            for batch in test_dataset:
+                v_reconstructed_batch = self._sample_v_given_h(self._sample_h_given_v(batch))
+                test_error += tf.reduce_mean(tf.square(batch - v_reconstructed_batch)).numpy()
+                test_accuracy += self._compute_reconstruction_accuracy(batch, v_reconstructed_batch)
+                num_batches_test += 1
+
+            test_error /= num_batches_test
+            test_accuracy /= num_batches_test
             test_errors.append(test_error)
-            test_accuracy = self._compute_reconstruction_accuracy(test_data, v_reconstructed_test)
             test_accuracies.append(test_accuracy)
 
             if verbose:
