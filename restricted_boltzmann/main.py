@@ -256,3 +256,50 @@ class RestrictedBoltzmann:
         print(f"{'Total Parameters':<40} {total_params:<25}")
         print(f"{'Model Size (Approx)':<40} {total_params * 4 / (1024**2):.2f} MB")
         print("=" * 50)
+
+    def plot_distributions(self, title="Distributions of Weights and Biases"):
+        plt.figure(figsize=(12, 4))
+
+        # Plot weights distribution
+        plt.subplot(1, 3, 1)
+        plt.hist(self.W.numpy().flatten(), bins=50, alpha=0.75, color="blue")
+        plt.title("Weights Distribution")
+
+        # Plot visible biases distribution
+        plt.subplot(1, 3, 2)
+        plt.hist(self.vb.numpy().flatten(), bins=50, alpha=0.75, color="green")
+        plt.title("Visible Biases Distribution")
+
+        # Plot hidden biases distribution
+        plt.subplot(1, 3, 3)
+        plt.hist(self.hb.numpy().flatten(), bins=50, alpha=0.75, color="red")
+        plt.title("Hidden Biases Distribution")
+
+        plt.tight_layout()
+        plt.suptitle(title, y=1.02)
+        plt.show()
+
+    def summarize_statistics(self):
+        print("=" * 50)
+        print(f"{'Summary Statistics':^50}")
+        print("=" * 50)
+        # Weights statistics
+        weights = self.W.numpy()
+        print("\nWeights:")
+        print("-" * 75)
+        print(
+            f"Mean: {np.mean(weights):>10.4f}, Std: {np.std(weights):>10.4f}, Sparsity: {np.sum(weights == 0) / len(weights.flatten()):>10.4f}"
+        )
+
+        # Visible biases statistics
+        visible_biases = self.vb.numpy()
+        print("\nVisible Biases:")
+        print("-" * 75)
+        print(f"Mean: {np.mean(visible_biases):>10.4f}, Std: {np.std(visible_biases):>10.4f}")
+
+        # Hidden biases statistics
+        hidden_biases = self.hb.numpy()
+        print("\nHidden Biases:")
+        print("-" * 75)
+        print(f"Mean: {np.mean(hidden_biases):>10.4f}, Std: {np.std(hidden_biases):>10.4f}")
+        print("=" * 50)
