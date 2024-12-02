@@ -93,13 +93,15 @@ class RestrictedBoltzmann:
         self.hidden_units = hidden_units
         self.visible_units = visible_units
 
-        # Initialize weights and biases
-        self.W = tf.Variable(
-            tf.random.truncated_normal([self.visible_units, self.hidden_units], stddev=0.1)
-        )
-        self.vb = tf.Variable(tf.zeros([self.visible_units]))
-        self.hb = tf.Variable(tf.zeros([self.hidden_units]))
-
+        # Initialize weights and biases if self.W, self.vb and self.hb are None
+        if self.W is None and self.vb is None and self.hb is None:
+            self.W = tf.Variable(
+                tf.random.truncated_normal([self.visible_units, self.hidden_units], stddev=0.1)
+            )
+            self.vb = tf.Variable(tf.zeros([self.visible_units]))
+            self.hb = tf.Variable(tf.zeros([self.hidden_units]))
+            if verbose:
+                print("Weights, visible biases and hidden biases were initialized.")
         train_errors = []
         test_errors = []
         train_accuracies = []
@@ -211,3 +213,46 @@ class RestrictedBoltzmann:
             tf.matmul(self._sigmoid(tf.matmul(data, self.W) + self.hb), tf.transpose(self.W))
             + self.vb
         ).numpy()
+
+    def summary(self):
+        if self.W is None or self.vb is None or self.hb is None:
+            print("Model has not been initialized yet.")
+            return
+
+        # Calculate the number of parameters for each component
+        num_weights = np.prod(self.W.shape)
+        num_visible_biases = self.vb.numpy().size
+        num_hidden_biases = self.hb.numpy().size
+        total_params = num_weights + num_visible_biases + num_hidden_biases
+
+        # Model details
+        visible_shape = tuple(self.vb.shape)
+        hidden_shape = tuple(self.hb.shape)
+
+        # Print the summary in a more detailed and formatted manner
+        print("=" * 50)
+        print(f"{'Model Summary':^50}")
+        print("=" * 50)
+        print(f"{'Layer':<20} {'Type':<15} {'Shape':<25} {'Parameters':<25}")
+        print("-" * 75)
+
+        # Visible layer
+        visible_shape_str = str(visible_shape).replace(",", ", ")
+        print(
+            f"{'Visible Layer':<20} {'Bias':<15} {visible_shape_str:<25} {num_visible_biases:<25}"
+        )
+
+        # Weights between layers
+        weight_shape = tuple(self.W.shape)
+        weight_shape_str = str(weight_shape).replace(",", ", ")
+        print(f"{'(Vis -> Hidden)':<20} {'Weight':<15} {weight_shape_str:<25} {num_weights:<25}")
+
+        # Hidden layer
+        hidden_shape_str = str(hidden_shape).replace(",", ", ")
+        print(f"{'Hidden Layer':<20} {'Bias':<15} {hidden_shape_str:<25} {num_hidden_biases:<25}")
+
+        print("-" * 75)
+        print(f"{'Total Layers':<40} {2:<25}")
+        print(f"{'Total Parameters':<40} {total_params:<25}")
+        print(f"{'Model Size (Approx)':<40} {total_params * 4 / (1024**2):.2f} MB")
+        print("=" * 50)
