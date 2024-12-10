@@ -59,6 +59,12 @@ class RestrictedBoltzmann:
             tf.cast(tf.equal(original_data, reconstructed_data), tf.float32)
         ).numpy()
 
+    def get_hidden_activations(self, data: Union[List[List[float]], tf.Tensor]) -> np.ndarray:
+        """Extract hidden layer activations for the given input data."""
+        if not isinstance(data, tf.Tensor):
+            data = tf.convert_to_tensor(data, dtype=tf.float32)
+        return self._sigmoid(tf.matmul(data, self.W) + self.hb).numpy()
+
     def train(
         self,
         data: Union[List[List[float]], tf.Tensor],
