@@ -19,17 +19,65 @@ class RestrictedBoltzmann:
         self.visible_units = None
 
     def _sigmoid(self, x):
+        """Computes the sigmoid function.
+
+        Parameters
+        ----------
+        x : `tf.Tensor` or `np.ndarray`
+            Input tensor or array to apply the sigmoid function.
+
+        Returns
+        -------
+        output : `tf.Tensor`
+            The sigmoid of the input values.
+        """
         return tf.nn.sigmoid(x)
 
     def _sample_h_given_v(self, v):
+        """Samples hidden units given visible units.
+
+        Parameters
+        ----------
+        v : `tf.Tensor` or `np.ndarray`
+            Visible unit activations.
+
+        Returns
+        -------
+        h_samples : `tf.Tensor`
+            Sampled hidden unit activations (binary).
+        """
         probabilities = self._sigmoid(tf.matmul(v, self.W) + self.hb)
         return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
     def _sample_v_given_h(self, h):
+        """Samples visible units given hidden units.
+
+        Parameters
+        ----------
+        h : `tf.Tensor` or `np.ndarray`
+            Hidden unit activations.
+
+        Returns
+        -------
+        v_samples : `tf.Tensor`
+            Sampled visible unit activations (binary).
+        """
         probabilities = self._sigmoid(tf.matmul(h, tf.transpose(self.W)) + self.vb)
         return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
     def _compute_free_energy(self, v):
+        """Computes the free energy of the visible units.
+
+        Parameters
+        ----------
+        v : `tf.Tensor` or `np.ndarray`
+            Visible unit activations.
+
+        Returns
+        -------
+        free_energy : `tf.Tensor`
+            The computed free energy values for each sample.
+        """
         if not isinstance(v, tf.Tensor):
             v = tf.convert_to_tensor(v, dtype=tf.float32)
         vb_term = tf.reduce_sum(v * self.vb, axis=1)
@@ -38,6 +86,22 @@ class RestrictedBoltzmann:
         return -vb_term - hidden_term
 
     def _contrastive_divergence(self, v0):
+        """Performs contrastive divergence learning step.
+
+        Parameters
+        ----------
+        v0 : `tf.Tensor` or `np.ndarray`
+            Initial visible unit activations (training data batch).
+
+        Returns
+        -------
+        w_grad : `tf.Tensor`
+            Weight gradient for update.
+        vb_grad : `tf.Tensor`
+            Visible bias gradient for update.
+        hb_grad : `tf.Tensor`
+            Hidden bias gradient for update.
+        """
         h0 = self._sample_h_given_v(v0)
         vk = v0  # Start with the original data
         hk = None
@@ -54,13 +118,38 @@ class RestrictedBoltzmann:
         )
 
     def _compute_reconstruction_accuracy(self, original_data, reconstructed_data):
+        """Computes the reconstruction accuracy between original and reconstructed data.
+
+        Parameters
+        ----------
+        original_data : `tf.Tensor` or `np.ndarray`
+            Original input data.
+        reconstructed_data : `tf.Tensor` or `np.ndarray`
+            Reconstructed output data from the model.
+
+        Returns
+        -------
+        accuracy : `float`
+            The reconstruction accuracy as a fraction of correct predictions.
+        """
         # Assuming binary data
         return tf.reduce_mean(
             tf.cast(tf.equal(original_data, reconstructed_data), tf.float32)
         ).numpy()
 
     def get_hidden_activations(self, data: Union[List[List[float]], tf.Tensor]) -> np.ndarray:
-        """Extract hidden layer activations for the given input data."""
+        """Extract hidden layer activations for the given input data.
+
+        Parameters
+        ----------
+        data : `list` or `tf.Tensor`
+            Input data as a list of lists or TensorFlow tensor.
+
+        Returns
+        -------
+        activations : `np.ndarray`
+            Hidden layer activation values for each sample.
+        """
         if not isinstance(data, tf.Tensor):
             data = tf.convert_to_tensor(data, dtype=tf.float32)
         return self._sigmoid(tf.matmul(data, self.W) + self.hb).numpy()
@@ -79,6 +168,38 @@ class RestrictedBoltzmann:
         early_stopping_patience: int = 5,
         decay_rate: float = 0.95,  # Exponential decay rate
     ):
+        """Trains the Restricted Boltzmann Machine on the provided data.
+
+        Parameters
+        ----------
+        data : `list` or `tf.Tensor`
+            Training data as a list of lists or TensorFlow tensor.
+        hidden_units : `int`
+            Number of hidden units in the RBM.
+        visible_units : `int`
+            Number of visible units (matching input dimension).
+        alpha : `float`, optional
+            Learning rate for weight updates (default: 1.0).
+        epochs : `int`, optional
+            Number of training epochs (default: 25).
+        batch_size : `int`, optional
+            Size of batches for training (default: 100).
+        plot : `bool`, optional
+            Whether to plot reconstruction errors during training (default: True).
+        verbose : `bool`, optional
+            Whether to print training progress (default: False).
+        test_size : `float`, optional
+            Fraction of data to use for testing (default: 0.2).
+        early_stopping_patience : `int`, optional
+            Number of epochs without improvement before stopping (default: 5).
+        decay_rate : `float`, optional
+            Learning rate decay factor when early stopping triggers (default: 0.95).
+
+        Returns
+        -------
+        self : `RestrictedBoltzmann`
+            The trained RBM model instance.
+        """
         if isinstance(data, tf.Tensor):
             data = data.numpy()
         elif not isinstance(data, np.ndarray):
@@ -187,13 +308,34 @@ class RestrictedBoltzmann:
                 break
 
     def save_model(self, checkpoint_dir: str):
-        """Save the model's weights and biases to a checkpoint directory."""
+        """Save the model's weights and biases to a checkpoint directory.
+
+        Parameters
+        ----------
+        checkpoint_dir : `str`
+            Directory path where the model checkpoint will be saved.
+        """
         checkpoint = tf.train.Checkpoint(W=self.W, vb=self.vb, hb=self.hb)
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         checkpoint.save(file_prefix=checkpoint_prefix)
 
     def load_model(self, checkpoint_dir: str, hidden_units: int, visible_units: int):
-        """Load the model's weights and biases from a checkpoint directory."""
+        """Load the model's weights and biases from a checkpoint directory.
+
+        Parameters
+        ----------
+        checkpoint_dir : `str`
+            Directory path containing the saved model checkpoint.
+        hidden_units : `int`
+            Number of hidden units in the RBM (must match original training).
+        visible_units : `int`
+            Number of visible units (must match original training).
+
+        Returns
+        -------
+        self : `RestrictedBoltzmann`
+            The loaded RBM model instance with restored weights and biases.
+        """
         self.hidden_units = hidden_units
         self.visible_units = visible_units
         checkpoint = tf.train.Checkpoint(
@@ -208,11 +350,35 @@ class RestrictedBoltzmann:
         self.hb = checkpoint.hb
 
     def predict(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+        """Predicts visible unit activations for given input data.
+
+        Parameters
+        ----------
+        data : `list` or `tf.Tensor`
+            Input data as a list of lists or TensorFlow tensor.
+
+        Returns
+        -------
+        predictions : `list`
+            Predicted visible unit activations (binary) for each sample.
+        """
         if not isinstance(data, tf.Tensor):
             data = tf.convert_to_tensor(data, dtype=tf.float32)
         return self._sample_v_given_h(self._sample_h_given_v(data)).numpy()
 
     def predict_proba(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+        """Predicts probabilities of visible unit activations for given input data.
+
+        Parameters
+        ----------
+        data : `list` or `tf.Tensor`
+            Input data as a list of lists or TensorFlow tensor.
+
+        Returns
+        -------
+        probabilities : `list`
+            Predicted probabilities (between 0 and 1) for each visible unit.
+        """
         if not isinstance(data, tf.Tensor):
             data = tf.convert_to_tensor(data, dtype=tf.float32)
         return self._sigmoid(
@@ -221,6 +387,11 @@ class RestrictedBoltzmann:
         ).numpy()
 
     def summary(self):
+        """Prints a detailed summary of the model architecture and parameters.
+
+        Displays layer types, shapes, parameter counts, and total model size.
+        Prints "Model has not been initialized yet." if weights are not set.
+        """
         if self.W is None or self.vb is None or self.hb is None:
             print("Model has not been initialized yet.")
             return
@@ -264,6 +435,18 @@ class RestrictedBoltzmann:
         print("=" * 50)
 
     def plot_distributions(self, title="Distributions of Weights and Biases"):
+        """Plots histograms of weights and biases distributions.
+
+        Parameters
+        ----------
+        title : `str`, optional
+            Title for the plot (default: "Distributions of Weights and Biases").
+
+        Returns
+        -------
+        fig, axes : `matplotlib.figure.Figure`, `list`
+            The figure object and axes containing the distribution plots.
+        """
         plt.figure(figsize=(12, 4))
 
         # Plot weights distribution
@@ -286,6 +469,11 @@ class RestrictedBoltzmann:
         plt.show()
 
     def summarize_statistics(self):
+        """Prints summary statistics for weights and biases.
+
+        Displays mean, standard deviation, and sparsity metrics for each component.
+        Prints a formatted table with statistical summaries of the model parameters.
+        """
         print("=" * 50)
         print(f"{'Summary Statistics':^50}")
         print("=" * 50)
