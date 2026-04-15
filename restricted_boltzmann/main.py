@@ -48,7 +48,13 @@ class RestrictedBoltzmann:
             Sampled hidden unit activations (binary).
         """
         probabilities = self._sigmoid(tf.matmul(v, self.W) + self.hb)
-        return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
+        # Use soft sampling to reduce sparsity - return probability values instead of hard binary decisions
+        # This encourages non-zero activations and reduces the tendency toward sparse representations
+        return tf.where(
+            probabilities > tf.random.uniform(tf.shape(probabilities)),
+            probabilities,  # Return the probability value (between 0 and 1)
+            tf.zeros_like(probabilities),
+        )
 
     def _sample_v_given_h(self, h: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Samples visible units given hidden units.
@@ -64,7 +70,13 @@ class RestrictedBoltzmann:
             Sampled visible unit activations (binary).
         """
         probabilities = self._sigmoid(tf.matmul(h, tf.transpose(self.W)) + self.vb)
-        return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
+        # Use soft sampling to reduce sparsity - return probability values instead of hard binary decisions
+        # This encourages non-zero activations and reduces the tendency toward sparse representations
+        return tf.where(
+            probabilities > tf.random.uniform(tf.shape(probabilities)),
+            probabilities,  # Return the probability value (between 0 and 1)
+            tf.zeros_like(probabilities),
+        )
 
     def _compute_free_energy(self, v: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Computes the free energy of the visible units.
@@ -174,6 +186,8 @@ class RestrictedBoltzmann:
         test_size: float = 0.2,
         early_stopping_patience: int = 5,
         decay_rate: float = 0.95,
+        l2_regularization: float = 1e-6,
+        diversity_regularization: float = 1e-6,
     ) -> "RestrictedBoltzmann":
         """Trains the Restricted Boltzmann Machine on the provided data.
 
@@ -201,6 +215,10 @@ class RestrictedBoltzmann:
             Number of epochs without improvement before stopping (default: 5).
         decay_rate : `float`, optional
             Learning rate decay factor when early stopping triggers (default: 0.95).
+        l2_regularization : `float`, optional
+            L2 regularization strength to reduce sparsity (default: 1e-6).
+        diversity_regularization : `float`, optional
+            Diversity regularization strength to reduce feature redundancy (default: 1e-6).
 
         Returns
         -------
@@ -229,11 +247,13 @@ class RestrictedBoltzmann:
 
         # Initialize weights and biases if self.W, self.vb and self.hb are None
         if self.W is None and self.vb is None and self.hb is None:
+            # Use larger standard deviation to reduce sparsity in initial weights
             self.W = tf.Variable(
-                tf.random.truncated_normal([self.visible_units, self.hidden_units], stddev=0.1)
+                tf.random.truncated_normal([self.visible_units, self.hidden_units], stddev=0.2)
             )
-            self.vb = tf.Variable(tf.zeros([self.visible_units]))
-            self.hb = tf.Variable(tf.zeros([self.hidden_units]))
+            # Initialize biases with small positive values to encourage non-zero activations
+            self.vb = tf.Variable(tf.ones([self.visible_units]) * 1e-6)
+            self.hb = tf.Variable(tf.ones([self.hidden_units]) * 1e-6)
             if verbose:
                 print("Weights, visible biases and hidden biases were initialized.")
         train_errors = []
@@ -249,7 +269,15 @@ class RestrictedBoltzmann:
                 w_grad, vb_grad, hb_grad = self._contrastive_divergence(batch)
 
                 # Update weights and biases with the current learning rate
-                self.W.assign_add(alpha * w_grad)
+                # Apply L2 regularization (weight decay) to reduce sparsity
+                l2_penalty = l2_regularization * self.W
+
+                # Apply diversity regularization to reduce feature redundancy
+                diversity_penalty = self.apply_diversity_regularization(diversity_regularization)
+
+                # Combine both penalties for weight updates
+                total_penalty = l2_penalty + diversity_penalty
+                self.W.assign_add(alpha * (w_grad - total_penalty))
                 self.vb.assign_add(alpha * vb_grad)
                 self.hb.assign_add(alpha * hb_grad)
 
@@ -481,6 +509,47 @@ class RestrictedBoltzmann:
         plt.suptitle(title, y=1.02)
         plt.show()
 
+    def apply_diversity_regularization(self, regularization_strength: float = 1e-6) -> tf.Tensor:
+        """Applies diversity regularization to encourage different hidden units to learn different features.
+
+        Adds a penalty term that discourages hidden units from having similar activation patterns.
+
+        Parameters
+        ----------
+        regularization_strength : `float`, optional
+            Strength of the diversity regularization (default: 1e-6).
+
+        Returns
+        -------
+        diversity_penalty : `tf.Tensor`
+            The computed diversity regularization penalty for use in training loss.
+        """
+        if self.W is None or self.hb is None:
+            return tf.constant(0.0)
+        sample_size = min(100, self.visible_units * 2)
+        sample_data = np.random.randn(sample_size, self.visible_units).astype(np.float32)
+        hidden_activations = self._sigmoid(tf.matmul(sample_data, self.W) + self.hb)
+        n_hidden = hidden_activations.shape[1]
+        X = tf.transpose(hidden_activations)  # shape [features, batch_size]
+
+        mean_X = tf.reduce_mean(X, axis=1, keepdims=True)
+        X_centered = X - mean_X
+        std_X = tf.math.reduce_std(X, axis=1, keepdims=True)
+        corr_matrix = tf.matmul(X_centered / std_X, X_centered / std_X, transpose_b=True) / (
+            X.shape[1] - 1
+        )
+
+        # Diversity penalty: encourage low correlation between hidden units
+        # Sum of absolute off-diagonal correlations (excluding diagonal which is 1.0)
+        mask = ~tf.eye(n_hidden, dtype=tf.bool)
+        diversity_penalty = (
+            regularization_strength
+            * tf.reduce_sum(tf.abs(corr_matrix * tf.cast(mask, tf.float32)))
+            / (n_hidden * (n_hidden - 1))
+        )
+
+        return diversity_penalty
+
     def summarize_statistics(self) -> None:
         """Prints summary statistics for weights and biases.
 
@@ -492,21 +561,21 @@ class RestrictedBoltzmann:
         print("=" * 50)
         # Weights statistics
         weights = self.W.numpy()
-        print("\nWeights:")
+        print("Weights:")
         print("-" * 75)
         print(
-            f"Mean: {np.mean(weights):>10.4f}, Std: {np.std(weights):>10.4f}, Sparsity: {np.sum(weights == 0) / len(weights.flatten()):>10.4f}"
+            f"Mean: {np.mean(weights):>10.4f}, Std: {np.std(weights):>10.4f}, Sparsity: {np.sum(weights <= 1e-9) / len(weights.flatten()):>10.4f}"
         )
 
         # Visible biases statistics
         visible_biases = self.vb.numpy()
-        print("\nVisible Biases:")
+        print("Visible Biases:")
         print("-" * 75)
         print(f"Mean: {np.mean(visible_biases):>10.4f}, Std: {np.std(visible_biases):>10.4f}")
 
         # Hidden biases statistics
         hidden_biases = self.hb.numpy()
-        print("\nHidden Biases:")
+        print("Hidden Biases:")
         print("-" * 75)
         print(f"Mean: {np.mean(hidden_biases):>10.4f}, Std: {np.std(hidden_biases):>10.4f}")
         print("=" * 50)

@@ -1,11 +1,12 @@
-import os
-import io
 import base64
+import io
+import os
 import warnings
-import numpy as np
+
 import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
 import plotly.graph_objects as go
+import seaborn as sns
 from plotly.offline import plot
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -27,7 +28,7 @@ class RBMReportGenerator:
 
     def _calc_sparsity(self, activations):
         """Calculates the percentage of neurons with near-zero activity."""
-        return np.mean(activations < 0.05) * 100
+        return np.mean(activations < 1e-2) * 100
 
     def generate(
         self,
@@ -40,7 +41,7 @@ class RBMReportGenerator:
 
         mean_act = np.mean(hidden_activations, axis=0)
         sparsity = self._calc_sparsity(hidden_activations)
-        dead_units = np.sum(mean_act < 0.01)
+        dead_units = np.sum(mean_act < 1e-2)
 
         fig_lifetime, ax = plt.subplots(figsize=(12, 3))
         ax.bar(range(len(mean_act)), mean_act, color=self.colors["primary"], alpha=0.7)
@@ -60,7 +61,7 @@ class RBMReportGenerator:
 
             fig_in = go.Figure(
                 data=go.Heatmap(
-                    z=input_data[i].reshape(side, side), colorscale="Viridis", showscale=False
+                    z=input_data[i].reshape(side, side), colorscale="gray", showscale=False
                 )
             )
             fig_in.update_layout(
