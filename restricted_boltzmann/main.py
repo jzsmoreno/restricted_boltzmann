@@ -1,8 +1,9 @@
 import os
-from typing import List, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import tensorflow as tf
 from IPython.display import clear_output
 from sklearn.model_selection import train_test_split
@@ -11,14 +12,14 @@ from sklearn.model_selection import train_test_split
 class RestrictedBoltzmann:
     """A class that implements a Restricted Boltzmann Machine"""
 
-    def __init__(self):
-        self.vb = None
-        self.hb = None
-        self.W = None
-        self.hidden_units = None
-        self.visible_units = None
+    def __init__(self) -> None:
+        self.vb: Optional[tf.Variable] = None
+        self.hb: Optional[tf.Variable] = None
+        self.W: Optional[tf.Tensor] = None
+        self.hidden_units: Optional[int] = None
+        self.visible_units: Optional[int] = None
 
-    def _sigmoid(self, x):
+    def _sigmoid(self, x: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Computes the sigmoid function.
 
         Parameters
@@ -33,7 +34,7 @@ class RestrictedBoltzmann:
         """
         return tf.nn.sigmoid(x)
 
-    def _sample_h_given_v(self, v):
+    def _sample_h_given_v(self, v: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Samples hidden units given visible units.
 
         Parameters
@@ -49,7 +50,7 @@ class RestrictedBoltzmann:
         probabilities = self._sigmoid(tf.matmul(v, self.W) + self.hb)
         return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
-    def _sample_v_given_h(self, h):
+    def _sample_v_given_h(self, h: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Samples visible units given hidden units.
 
         Parameters
@@ -65,7 +66,7 @@ class RestrictedBoltzmann:
         probabilities = self._sigmoid(tf.matmul(h, tf.transpose(self.W)) + self.vb)
         return tf.where(probabilities > tf.random.uniform(tf.shape(probabilities)), 1.0, 0.0)
 
-    def _compute_free_energy(self, v):
+    def _compute_free_energy(self, v: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Computes the free energy of the visible units.
 
         Parameters
@@ -85,7 +86,9 @@ class RestrictedBoltzmann:
         hidden_term = tf.reduce_sum(tf.math.log(1 + tf.exp(wx_b_term)), axis=1)
         return -vb_term - hidden_term
 
-    def _contrastive_divergence(self, v0):
+    def _contrastive_divergence(
+        self, v0: Union[tf.Tensor, np.ndarray]
+    ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """Performs contrastive divergence learning step.
 
         Parameters
@@ -117,7 +120,11 @@ class RestrictedBoltzmann:
             tf.reduce_mean(h0 - hk, axis=0),
         )
 
-    def _compute_reconstruction_accuracy(self, original_data, reconstructed_data):
+    def _compute_reconstruction_accuracy(
+        self,
+        original_data: Union[tf.Tensor, np.ndarray],
+        reconstructed_data: Union[tf.Tensor, np.ndarray],
+    ) -> float:
         """Computes the reconstruction accuracy between original and reconstructed data.
 
         Parameters
@@ -137,7 +144,7 @@ class RestrictedBoltzmann:
             tf.cast(tf.equal(original_data, reconstructed_data), tf.float32)
         ).numpy()
 
-    def get_hidden_activations(self, data: Union[List[List[float]], tf.Tensor]) -> np.ndarray:
+    def get_hidden_activations(self, data: Union[List[List[float]], tf.Tensor]) -> Any:
         """Extract hidden layer activations for the given input data.
 
         Parameters
@@ -166,8 +173,8 @@ class RestrictedBoltzmann:
         verbose: bool = False,
         test_size: float = 0.2,
         early_stopping_patience: int = 5,
-        decay_rate: float = 0.95,  # Exponential decay rate
-    ):
+        decay_rate: float = 0.95,
+    ) -> "RestrictedBoltzmann":
         """Trains the Restricted Boltzmann Machine on the provided data.
 
         Parameters
@@ -287,6 +294,7 @@ class RestrictedBoltzmann:
 
             if plot and (epoch % 5 == 0 or epoch == epochs - 1):
                 clear_output(wait=True)
+                sns.set_theme(style="whitegrid")
                 plt.plot(train_errors, label="Train Reconstruction Error", color="blue")
                 plt.plot(test_errors, label="Test Reconstruction Error", color="red")
                 plt.ylabel("Error")
@@ -319,7 +327,9 @@ class RestrictedBoltzmann:
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         checkpoint.save(file_prefix=checkpoint_prefix)
 
-    def load_model(self, checkpoint_dir: str, hidden_units: int, visible_units: int):
+    def load_model(
+        self, checkpoint_dir: str, hidden_units: int, visible_units: int
+    ) -> "RestrictedBoltzmann":
         """Load the model's weights and biases from a checkpoint directory.
 
         Parameters
@@ -386,7 +396,7 @@ class RestrictedBoltzmann:
             + self.vb
         ).numpy()
 
-    def summary(self):
+    def summary(self) -> None:
         """Prints a detailed summary of the model architecture and parameters.
 
         Displays layer types, shapes, parameter counts, and total model size.
@@ -434,7 +444,9 @@ class RestrictedBoltzmann:
         print(f"{'Model Size (Approx)':<40} {total_params * 4 / (1024**2):.2f} MB")
         print("=" * 50)
 
-    def plot_distributions(self, title="Distributions of Weights and Biases"):
+    def plot_distributions(
+        self, title: str = "Distributions of Weights and Biases"
+    ) -> Tuple[plt.Figure, List]:
         """Plots histograms of weights and biases distributions.
 
         Parameters
@@ -447,6 +459,7 @@ class RestrictedBoltzmann:
         fig, axes : `matplotlib.figure.Figure`, `list`
             The figure object and axes containing the distribution plots.
         """
+        sns.set_theme(style="whitegrid")
         plt.figure(figsize=(12, 4))
 
         # Plot weights distribution
@@ -468,7 +481,7 @@ class RestrictedBoltzmann:
         plt.suptitle(title, y=1.02)
         plt.show()
 
-    def summarize_statistics(self):
+    def summarize_statistics(self) -> None:
         """Prints summary statistics for weights and biases.
 
         Displays mean, standard deviation, and sparsity metrics for each component.
