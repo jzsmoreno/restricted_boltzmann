@@ -224,13 +224,33 @@ class RestrictedBoltzmann:
         -------
         self : `RestrictedBoltzmann`
             The trained RBM model instance.
+
+        Raises
+        ------
+        ValueError
+            If hidden_units <= 0, visible_units <= 0, or data is empty.
+        RuntimeError
+            If called on an already initialized model without proper weight handling.
         """
+        # Input validation
+        if hidden_units <= 0:
+            raise ValueError(f"hidden_units must be positive, got {hidden_units}")
+        if visible_units <= 0:
+            raise ValueError(f"visible_units must be positive, got {visible_units}")
+
         if isinstance(data, tf.Tensor):
             data = data.numpy()
         elif not isinstance(data, np.ndarray):
             data = np.array(data)
 
         data = data.astype(np.float32)
+
+        if data.size == 0:
+            raise ValueError("Input data cannot be empty.")
+        if data.shape[1] != visible_units:
+            raise ValueError(
+                f"Data dimension ({data.shape[1]}) does not match visible_units ({visible_units})"
+            )
 
         # Split the dataset into train and test sets
         train_data, test_data = train_test_split(data, test_size=test_size, random_state=42)
