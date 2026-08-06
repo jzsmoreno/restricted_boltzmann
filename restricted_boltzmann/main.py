@@ -364,6 +364,234 @@ class RestrictedBoltzmann:
                 print(f"Early stopping at epoch {epoch + 1}")
                 break
 
+    def train_genetic(
+        self,
+        data: Union[List[List[float]], tf.Tensor, np.ndarray],
+        hidden_units: int,
+        visible_units: int,
+        population_size: int = 20,
+        generations: int = 50,
+        mutation_rate: float = 0.1,
+        crossover_rate: float = 0.7,
+        elite_size: int = 2,
+        tournament_size: int = 3,
+        plot: bool = True,
+        verbose: bool = False,
+        test_size: float = 0.2,
+    ) -> None:
+        """Trains the Restricted Boltzmann Machine using a genetic algorithm.
+
+        Evolves a population of candidate weight matrices (each individual
+        encodes the weights ``W`` and biases ``vb``/``hb``) through selection,
+        crossover and mutation, using reconstruction error on a validation set
+        as the fitness criterion. The fittest individual found is assigned to
+        the model at the end of the evolution.
+
+        Parameters
+        ----------
+        data : `list` or `tf.Tensor`
+            Training data as a list of lists or TensorFlow tensor.
+        hidden_units : `int`
+            Number of hidden units in the RBM.
+        visible_units : `int`
+            Number of visible units (matching input dimension).
+        population_size : `int`, optional
+            Number of individuals in the population (default: 20).
+        generations : `int`, optional
+            Number of generations to evolve (default: 50).
+        mutation_rate : `float`, optional
+            Probability of mutating each gene (default: 0.1).
+        crossover_rate : `float`, optional
+            Probability of applying crossover between two parents (default: 0.7).
+        elite_size : `int`, optional
+            Number of best individuals preserved unchanged into the next
+            generation (default: 2).
+        tournament_size : `int`, optional
+            Number of individuals competing in each tournament selection
+            (default: 3).
+        plot : `bool`, optional
+            Whether to plot fitness over generations (default: True).
+        verbose : `bool`, optional
+            Whether to print training progress (default: False).
+        test_size : `float`, optional
+            Fraction of data to use for validation/fitness evaluation
+            (default: 0.2).
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If hidden_units <= 0, visible_units <= 0, data is empty,
+            population_size < 2, or elite_size >= population_size.
+        """
+        # Input validation
+        if hidden_units <= 0:
+            raise ValueError(f"hidden_units must be positive, got {hidden_units}")
+        if visible_units <= 0:
+            raise ValueError(f"visible_units must be positive, got {visible_units}")
+        if population_size < 2:
+            raise ValueError(f"population_size must be at least 2, got {population_size}")
+        if elite_size >= population_size:
+            raise ValueError(
+                f"elite_size ({elite_size}) must be smaller than population_size ({population_size})"
+            )
+
+        if isinstance(data, tf.Tensor):
+            data = data.numpy()
+        elif not isinstance(data, np.ndarray):
+            data = np.array(data)
+
+        data = data.astype(np.float32)
+
+        if data.size == 0:
+            raise ValueError("Input data cannot be empty.")
+        if data.shape[1] != visible_units:
+            raise ValueError(
+                f"Data dimension ({data.shape[1]}) does not match visible_units ({visible_units})"
+            )
+
+        # Split the dataset into train and validation sets
+        train_data, val_data = train_test_split(data, test_size=test_size, random_state=42)
+
+        # Use a bounded subset of validation data for fitness evaluation for speed
+        max_fitness_samples = 200
+        val_subset = val_data[:max_fitness_samples]
+
+        def _sigmoid(x: np.ndarray) -> np.ndarray:
+            """Numerically stable sigmoid for numpy arrays."""
+            return 1.0 / (1.0 + np.exp(-x))
+
+        def _random_individual() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Creates a random individual encoding (W, vb, hb)."""
+            W = np.random.randn(visible_units, hidden_units).astype(np.float32) * 0.2
+            vb = np.ones(visible_units, dtype=np.float32) * 1e-6
+            hb = np.ones(hidden_units, dtype=np.float32) * 1e-6
+            return (W, vb, hb)
+
+        def _fitness(individual: Tuple[np.ndarray, np.ndarray, np.ndarray]) -> float:
+            """Computes fitness as the inverse of reconstruction error."""
+            W, vb, hb = individual
+            h = _sigmoid(val_subset @ W + hb)
+            v_recon = _sigmoid(h @ W.T + vb)
+            error = np.mean((val_subset - v_recon) ** 2)
+            return 1.0 / (1.0 + error)
+
+        def _tournament_select(
+            population: List[Tuple[np.ndarray, np.ndarray, np.ndarray]],
+            fitnesses: np.ndarray,
+            k: int,
+        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Selects the fittest individual from a random tournament."""
+            idx = np.random.choice(len(population), size=k, replace=False)
+            best = idx[np.argmax(fitnesses[idx])]
+            return population[best]
+
+        def _crossover(
+            p1: Tuple[np.ndarray, np.ndarray, np.ndarray],
+            p2: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Blend crossover (BLX-alpha) for real-valued genes."""
+            alpha = 0.5
+            child = []
+            for a, b in zip(p1, p2):
+                lo = np.minimum(a, b) - alpha * np.abs(a - b)
+                hi = np.maximum(a, b) + alpha * np.abs(a - b)
+                c = lo + np.random.rand(*a.shape).astype(np.float32) * (hi - lo)
+                child.append(c)
+            return (child[0], child[1], child[2])
+
+        def _mutate(
+            individual: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Applies Gaussian mutation to each gene with probability mutation_rate."""
+            W, vb, hb = individual
+            W = (
+                W
+                + (np.random.rand(*W.shape) < mutation_rate)
+                * np.random.randn(*W.shape).astype(np.float32)
+                * 0.1
+            )
+            vb = (
+                vb
+                + (np.random.rand(*vb.shape) < mutation_rate)
+                * np.random.randn(*vb.shape).astype(np.float32)
+                * 0.1
+            )
+            hb = (
+                hb
+                + (np.random.rand(*hb.shape) < mutation_rate)
+                * np.random.randn(*hb.shape).astype(np.float32)
+                * 0.1
+            )
+            return (W, vb, hb)
+
+        # Initialize the population
+        population = [_random_individual() for _ in range(population_size)]
+
+        best_fitness_history = []
+        avg_fitness_history = []
+
+        for gen in range(generations):
+            fitnesses = np.array([_fitness(ind) for ind in population])
+            best_fitness = float(np.max(fitnesses))
+            avg_fitness = float(np.mean(fitnesses))
+            best_fitness_history.append(best_fitness)
+            avg_fitness_history.append(avg_fitness)
+
+            if verbose:
+                print(
+                    f"Generation {gen + 1}/{generations} - Best Fitness: {best_fitness:.4f}, "
+                    f"Avg Fitness: {avg_fitness:.4f}"
+                )
+
+            if plot and (gen % 5 == 0 or gen == generations - 1):
+                clear_output(wait=True)
+                sns.set_theme(style="whitegrid")
+                plt.plot(best_fitness_history, label="Best Fitness", color="blue")
+                plt.plot(avg_fitness_history, label="Average Fitness", color="orange")
+                plt.ylabel("Fitness")
+                plt.xlabel("Generation")
+                plt.legend()
+                plt.show()
+
+            # Build the next generation
+            new_population = []
+
+            # Elitism: preserve the best individuals unchanged
+            elite_indices = np.argsort(fitnesses)[-elite_size:]
+            for idx in elite_indices:
+                new_population.append(population[idx])
+
+            # Fill the rest of the population with offspring
+            while len(new_population) < population_size:
+                p1 = _tournament_select(population, fitnesses, tournament_size)
+                p2 = _tournament_select(population, fitnesses, tournament_size)
+                if np.random.rand() < crossover_rate:
+                    child = _crossover(p1, p2)
+                else:
+                    child = p1
+                child = _mutate(child)
+                new_population.append(child)
+
+            population = new_population
+
+        # Assign the fittest individual to the model
+        final_fitnesses = np.array([_fitness(ind) for ind in population])
+        best_idx = int(np.argmax(final_fitnesses))
+        best_W, best_vb, best_hb = population[best_idx]
+
+        self.hidden_units = hidden_units
+        self.visible_units = visible_units
+        self.W = tf.Variable(best_W)
+        self.vb = tf.Variable(best_vb)
+        self.hb = tf.Variable(best_hb)
+
+        if verbose:
+            print(f"Best fitness: {final_fitnesses[best_idx]:.4f}")
+
     def save_model(self, checkpoint_dir: str) -> None:
         """Save the model's weights and biases to a checkpoint directory.
 
