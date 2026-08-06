@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import warnings
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,35 +14,40 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class RBMReportGenerator:
-    def __init__(self, folder_path="reports"):
+    def __init__(self, folder_path: str = "reports") -> None:
         self.folder_path = folder_path
         os.makedirs(self.folder_path, exist_ok=True)
         plt.ioff()
         # Modern color palette
-        self.colors = {"bg": "#f8f9fa", "card": "#ffffff", "text": "#212529", "primary": "#4361ee"}
+        self.colors: Dict[str, str] = {
+            "bg": "#f8f9fa",
+            "card": "#ffffff",
+            "text": "#212529",
+            "primary": "#4361ee",
+        }
 
-    def _get_base64(self, fig):
+    def _get_base64(self, fig: plt.Figure) -> str:
         buf = io.BytesIO()
         fig.savefig(buf, format="png", bbox_inches="tight", dpi=120, facecolor="white")
         plt.close(fig)
         return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    def _calc_sparsity(self, activations):
+    def _calc_sparsity(self, activations: np.ndarray) -> float:
         """Calculates the percentage of neurons with near-zero activity."""
-        return np.mean(activations < 1e-2) * 100
+        return float(np.mean(activations < 1e-2) * 100)
 
     def generate(
         self,
-        hidden_activations,
-        input_data,
-        filename="rbm.html",
-        num_samples=8,
-    ):
+        hidden_activations: np.ndarray,
+        input_data: np.ndarray,
+        filename: str = "rbm.html",
+        num_samples: int = 8,
+    ) -> None:
         num_samples = min(num_samples, len(input_data))
 
         mean_act = np.mean(hidden_activations, axis=0)
         sparsity = self._calc_sparsity(hidden_activations)
-        dead_units = np.sum(mean_act < 1e-2)
+        dead_units = int(np.sum(mean_act < 1e-2))
 
         fig_lifetime, ax = plt.subplots(figsize=(12, 3))
         ax.bar(range(len(mean_act)), mean_act, color=self.colors["primary"], alpha=0.7)
@@ -114,7 +120,7 @@ class RBMReportGenerator:
             <div class="container">
                 <div class="stats-grid">
                     <div class="stat-card"><div class="stat-value">{sparsity:.1f}%</div><div class="stat-label">Sparsity Rate</div></div>
-                    <div class="stat-card"><div class="stat-value">{dead_units}</div><div class="stat-label">Dead Neurons (&lt;1%)</div></div>
+                    <div class="stat-card"><div class="stat-value">{dead_units}</div><div class="stat-label">Dead Neurons (<1%)</div></div>
                     <div class="stat-card"><div class="stat-value">{hidden_activations.shape[1]}</div><div class="stat-label">Hidden Units</div></div>
                     <div class="stat-card"><div class="stat-value">{np.max(hidden_activations):.2f}</div><div class="stat-label">Peak Activation</div></div>
                 </div>

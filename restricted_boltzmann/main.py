@@ -13,11 +13,11 @@ class RestrictedBoltzmann:
     """A class that implements a Restricted Boltzmann Machine"""
 
     def __init__(self) -> None:
-        self.vb: Optional[tf.Variable] = None
-        self.hb: Optional[tf.Variable] = None
-        self.W: Optional[tf.Tensor] = None
-        self.hidden_units: Optional[int] = None
-        self.visible_units: Optional[int] = None
+        self.vb: Optional[Union[tf.Variable, None]] = None
+        self.hb: Optional[Union[tf.Variable, None]] = None
+        self.W: Optional[Union[tf.Variable, None]] = None
+        self.hidden_units: Optional[Union[int, None]] = None
+        self.visible_units: Optional[Union[int, None]] = None
 
     def _sigmoid(self, x: Union[tf.Tensor, np.ndarray]) -> tf.Tensor:
         """Computes the sigmoid function.
@@ -156,7 +156,9 @@ class RestrictedBoltzmann:
             tf.cast(tf.equal(original_data, reconstructed_data), tf.float32)
         ).numpy()
 
-    def get_hidden_activations(self, data: Union[List[List[float]], tf.Tensor]) -> Any:
+    def get_hidden_activations(
+        self, data: Union[List[List[float]], tf.Tensor, np.ndarray]
+    ) -> np.ndarray:
         """Extract hidden layer activations for the given input data.
 
         Parameters
@@ -175,7 +177,7 @@ class RestrictedBoltzmann:
 
     def train(
         self,
-        data: Union[List[List[float]], tf.Tensor],
+        data: Union[List[List[float]], tf.Tensor, np.ndarray],
         hidden_units: int,
         visible_units: int,
         alpha: float = 1.0,
@@ -188,7 +190,7 @@ class RestrictedBoltzmann:
         decay_rate: float = 0.95,
         l2_regularization: float = 1e-6,
         diversity_regularization: float = 1e-6,
-    ) -> "RestrictedBoltzmann":
+    ) -> None:
         """Trains the Restricted Boltzmann Machine on the provided data.
 
         Parameters
@@ -222,8 +224,7 @@ class RestrictedBoltzmann:
 
         Returns
         -------
-        self : `RestrictedBoltzmann`
-            The trained RBM model instance.
+        None
 
         Raises
         ------
@@ -363,7 +364,7 @@ class RestrictedBoltzmann:
                 print(f"Early stopping at epoch {epoch + 1}")
                 break
 
-    def save_model(self, checkpoint_dir: str):
+    def save_model(self, checkpoint_dir: str) -> None:
         """Save the model's weights and biases to a checkpoint directory.
 
         Parameters
@@ -375,9 +376,7 @@ class RestrictedBoltzmann:
         checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         checkpoint.save(file_prefix=checkpoint_prefix)
 
-    def load_model(
-        self, checkpoint_dir: str, hidden_units: int, visible_units: int
-    ) -> "RestrictedBoltzmann":
+    def load_model(self, checkpoint_dir: str, hidden_units: int, visible_units: int) -> None:
         """Load the model's weights and biases from a checkpoint directory.
 
         Parameters
@@ -391,8 +390,7 @@ class RestrictedBoltzmann:
 
         Returns
         -------
-        self : `RestrictedBoltzmann`
-            The loaded RBM model instance with restored weights and biases.
+        None
         """
         self.hidden_units = hidden_units
         self.visible_units = visible_units
@@ -407,7 +405,7 @@ class RestrictedBoltzmann:
         self.vb = checkpoint.vb
         self.hb = checkpoint.hb
 
-    def predict(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+    def predict(self, data: Union[List[List[float]], tf.Tensor]) -> np.ndarray:
         """Predicts visible unit activations for given input data.
 
         Parameters
@@ -417,14 +415,14 @@ class RestrictedBoltzmann:
 
         Returns
         -------
-        predictions : `list`
+        predictions : `np.ndarray`
             Predicted visible unit activations (binary) for each sample.
         """
         if not isinstance(data, tf.Tensor):
             data = tf.convert_to_tensor(data, dtype=tf.float32)
         return self._sample_v_given_h(self._sample_h_given_v(data)).numpy()
 
-    def predict_proba(self, data: Union[List[List[float]], tf.Tensor]) -> List[List[float]]:
+    def predict_proba(self, data: Union[List[List[float]], tf.Tensor]) -> np.ndarray:
         """Predicts probabilities of visible unit activations for given input data.
 
         Parameters
@@ -434,7 +432,7 @@ class RestrictedBoltzmann:
 
         Returns
         -------
-        probabilities : `list`
+        probabilities : `np.ndarray`
             Predicted probabilities (between 0 and 1) for each visible unit.
         """
         if not isinstance(data, tf.Tensor):
@@ -492,9 +490,7 @@ class RestrictedBoltzmann:
         print(f"{'Model Size (Approx)':<40} {total_params * 4 / (1024**2):.2f} MB")
         print("=" * 50)
 
-    def plot_distributions(
-        self, title: str = "Distributions of Weights and Biases"
-    ) -> Tuple[plt.Figure, List]:
+    def plot_distributions(self, title: str = "Distributions of Weights and Biases") -> None:
         """Plots histograms of weights and biases distributions.
 
         Parameters
@@ -504,8 +500,7 @@ class RestrictedBoltzmann:
 
         Returns
         -------
-        fig, axes : `matplotlib.figure.Figure`, `list`
-            The figure object and axes containing the distribution plots.
+        None
         """
         sns.set_theme(style="whitegrid")
         plt.figure(figsize=(12, 4))
