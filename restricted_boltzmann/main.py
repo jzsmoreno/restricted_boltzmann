@@ -378,6 +378,8 @@ class RestrictedBoltzmann:
         plot: bool = True,
         verbose: bool = False,
         test_size: float = 0.2,
+        warm_start: bool = False,
+        warm_start_variation: float = 0.05,
     ) -> None:
         """Trains the Restricted Boltzmann Machine using a genetic algorithm.
 
@@ -416,6 +418,15 @@ class RestrictedBoltzmann:
         test_size : `float`, optional
             Fraction of data to use for validation/fitness evaluation
             (default: 0.2).
+        warm_start : `bool`, optional
+            If True, initializes the population by reusing the current model
+            weights (``self.W``, ``self.vb``, ``self.hb``) with a small
+            Gaussian variation instead of generating fully random individuals.
+            Requires the model to have been previously trained or initialized
+            (default: False).
+        warm_start_variation : `float`, optional
+            Standard deviation of the Gaussian noise added to the current
+            weights when ``warm_start=True`` (default: 0.05).
 
         Returns
         -------
@@ -426,6 +437,7 @@ class RestrictedBoltzmann:
         ValueError
             If hidden_units <= 0, visible_units <= 0, data is empty,
             population_size < 2, or elite_size >= population_size.
+            If warm_start=True but the model has not been initialized yet.
         """
         # Input validation
         if hidden_units <= 0:
@@ -469,6 +481,32 @@ class RestrictedBoltzmann:
             W = np.random.randn(visible_units, hidden_units).astype(np.float32) * 0.2
             vb = np.ones(visible_units, dtype=np.float32) * 1e-6
             hb = np.ones(hidden_units, dtype=np.float32) * 1e-6
+            return (W, vb, hb)
+
+        def _warm_start_individual() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            """Creates an individual by reusing the current model weights with
+            a small Gaussian variation added to each parameter.
+
+            Returns
+            -------
+            individual : `Tuple[np.ndarray, np.ndarray, np.ndarray]`
+                A tuple (W, vb, hb) derived from the current model weights
+                plus Gaussian noise with standard deviation
+                ``warm_start_variation``.
+            """
+            W = (
+                self.W.numpy().copy()
+                + np.random.randn(visible_units, hidden_units).astype(np.float32)
+                * warm_start_variation
+            )
+            vb = (
+                self.vb.numpy().copy()
+                + np.random.randn(visible_units).astype(np.float32) * warm_start_variation
+            )
+            hb = (
+                self.hb.numpy().copy()
+                + np.random.randn(hidden_units).astype(np.float32) * warm_start_variation
+            )
             return (W, vb, hb)
 
         def _fitness(individual: Tuple[np.ndarray, np.ndarray, np.ndarray]) -> float:
@@ -528,8 +566,25 @@ class RestrictedBoltzmann:
             )
             return (W, vb, hb)
 
+        # Validate warm-start prerequisites
+        if warm_start:
+            if self.W is None or self.vb is None or self.hb is None:
+                raise ValueError(
+                    "warm_start=True requires the model to have been previously "
+                    "trained or initialized. Call train() first or set warm_start=False."
+                )
+            if self.W.shape != (visible_units, hidden_units):
+                raise ValueError(
+                    f"Current model weights shape {self.W.shape} does not match "
+                    f"the requested (visible_units={visible_units}, hidden_units={hidden_units}). "
+                    "Re-train the model with matching dimensions or set warm_start=False."
+                )
+
         # Initialize the population
-        population = [_random_individual() for _ in range(population_size)]
+        if warm_start:
+            population = [_warm_start_individual() for _ in range(population_size)]
+        else:
+            population = [_random_individual() for _ in range(population_size)]
 
         best_fitness_history = []
         avg_fitness_history = []
