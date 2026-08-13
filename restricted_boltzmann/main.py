@@ -512,9 +512,12 @@ class RestrictedBoltzmann:
         def _fitness(individual: Tuple[np.ndarray, np.ndarray, np.ndarray]) -> float:
             """Computes fitness as the inverse of reconstruction error."""
             W, vb, hb = individual
-            h = _sigmoid(val_subset @ W + hb)
-            v_recon = _sigmoid(h @ W.T + vb)
-            error = np.mean((val_subset - v_recon) ** 2)
+            # Temporarily assign individual's weights to the model
+            self.W = tf.Variable(W)
+            self.vb = tf.Variable(vb)
+            self.hb = tf.Variable(hb)
+            v_recon = self._sample_v_given_h(self._sample_h_given_v(val_subset))
+            error = tf.reduce_mean(tf.square(val_subset - v_recon)).numpy()
             return 1.0 / (1.0 + error)
 
         def _tournament_select(
