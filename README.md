@@ -1,3 +1,5 @@
+![restricted_boltzmann](https://raw.githubusercontent.com/jzsmoreno/restricted_boltzmann/main/restricted_boltzmann.png)
+
 ![GitHub last commit](https://img.shields.io/github/last-commit/jzsmoreno/restricted_boltzmann?style=for-the-badge)
 ![GitHub repo size](https://img.shields.io/github/repo-size/jzsmoreno/restricted_boltzmann?style=for-the-badge)
 ![License](https://img.shields.io/github/license/jzsmoreno/restricted_boltzmann?style=for-the-badge)
